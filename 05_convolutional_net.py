@@ -3,6 +3,7 @@
 import tensorflow as tf
 import numpy as np
 import input_data
+import os
 
 batch_size = 128
 test_size = 256
@@ -59,14 +60,33 @@ cost = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(py_x, Y))
 train_op = tf.train.RMSPropOptimizer(0.001, 0.9).minimize(cost)
 predict_op = tf.argmax(py_x, 1)
 
+ckpt_dir = "./05_ckpt_dir"
+if not os.path.exists(ckpt_dir):
+    os.makedirs(ckpt_dir)
+
+global_step = tf.Variable(0, name='global_step', trainable=False)
+
+# Call this after declaring all tf.Variables.
+saver = tf.train.Saver()
+
 # Launch the graph in a session
 with tf.Session() as sess:
     # you need to initialize all variables
     tf.initialize_all_variables().run()
 
-    for i in range(100):
+    ckpt = tf.train.get_checkpoint_state(ckpt_dir)
+    if ckpt and ckpt.model_checkpoint_path:
+        print(ckpt.model_checkpoint_path)
+        saver.restore(sess, ckpt.model_checkpoint_path) # restore all variables
+
+    start = global_step.eval() + 1 # get last global_step
+    print("Start from:", start)
+
+    for i in range(start,100):
+
         training_batch = zip(range(0, len(trX), batch_size),
                              range(batch_size, len(trX)+1, batch_size))
+
         for start, end in training_batch:
             sess.run(train_op, feed_dict={X: trX[start:end], Y: trY[start:end],
                                           p_keep_conv: 0.8, p_keep_hidden: 0.5})
@@ -75,7 +95,11 @@ with tf.Session() as sess:
         np.random.shuffle(test_indices)
         test_indices = test_indices[0:test_size]
 
+        global_step.assign(i).eval() # set and update(eval) global_step with index, i
+        saver.save(sess, ckpt_dir + "/model.ckpt", global_step=global_step)
+
         print(i, np.mean(np.argmax(teY[test_indices], axis=1) ==
                          sess.run(predict_op, feed_dict={X: teX[test_indices],
+                                                         Y: teY[test_indices],
                                                          p_keep_conv: 1.0,
                                                          p_keep_hidden: 1.0})))
